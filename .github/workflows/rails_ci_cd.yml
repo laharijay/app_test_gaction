@@ -1,0 +1,128 @@
+name: Rails CI/CD
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  RAILS_ENV: test
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/rails_test
+  RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+  LOCKBOX_MASTER_KEY: ${{ secrets.LOCKBOX_MASTER_KEY }}
+  BLIND_INDEX_MASTER_KEY: ${{ secrets.BLIND_INDEX_MASTER_KEY }}
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.2.2'
+        bundler-cache: true
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18.x'
+        cache: 'yarn'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get -yqq install libpq-dev
+        gem install bundler
+        bundle config path vendor/bundle
+        bundle install --jobs 4 --retry 3
+        yarn install --frozen-lockfile
+
+    - name: Set up database
+      run: |
+        cp config/database.yml.ci config/database.yml
+        bundle exec rails db:create db:schema:load --trace
+
+    - name: Run tests
+      run: |
+        bundle exec rails test
+        bundle exec rspec spec/
+
+  lint:
+    name: Lint and Security
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.2.2'
+        bundler-cache: true
+
+    - name: Run RuboCop
+      run: bundle exec rubocop --parallel
+
+    - name: Run Brakeman
+      run: bundle exec brakeman -q -w2
+
+    - name: Bundle Audit
+      run: bundle exec bundle audit check --update
+
+  deploy_staging:
+    name: Deploy to Staging
+    needs: [test, lint]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.2.2'
+        bundler-cache: true
+
+    # Add your deployment steps here
+    # Example for Heroku:
+    # - name: Deploy to Heroku
+    #   uses: akhileshns/heroku-deploy@v3.12.12
+    #   with:
+    #     heroku_api_key: ${{secrets.HEROKU_API_KEY}}
+    #     heroku_app_name: "your-app-staging"
+    #     heroku_email: "your-email@example.com"
+    #     justlogin: true
+
+  deploy_production:
+    name: Deploy to Production
+    needs: [deploy_staging]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.2.2'
+        bundler-cache: true
+
+    # Add your production deployment steps here
+    # Similar to staging but with production environment variables
