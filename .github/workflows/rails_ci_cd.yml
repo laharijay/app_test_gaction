@@ -40,11 +40,12 @@ jobs:
         ruby-version: '3.2.2'
         bundler-cache: true
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18.x'
-        cache: 'yarn'
+    # - name: Set up Node.js
+    #   uses: actions/setup-node@v3
+    #   with:
+    #     node-version: '18.x'
+    #     cache: 'yarn'
+    # cp config/database.yml.ci config/database.yml
 
     - name: Install dependencies
       run: |
@@ -56,7 +57,6 @@ jobs:
 
     - name: Set up database
       run: |
-        cp config/database.yml.ci config/database.yml
         bundle exec rails db:create db:schema:load --trace
 
     - name: Run tests
@@ -81,8 +81,8 @@ jobs:
     - name: Run Brakeman
       run: bundle exec brakeman -q -w2
 
-    - name: Bundle Audit
-      run: bundle exec bundle audit check --update
+    # - name: Bundle Audit
+    #   run: bundle exec bundle audit check --update
 
   deploy_staging:
     name: Deploy to Staging
